@@ -1,0 +1,34 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+
+# User-uploaded PDFs (not tracked — too large and personal)
+data/*.pdf
+data/*.PDF
+
+# Generated outputs (rebuilt on each run)
+outputs/*.json
+outputs/*.txt
+outputs/*.csv
+
+# Trained model artifacts (rebuilt on first run)
+models/*.pkl
+models/*.joblib
+
+# Sentence-transformers / HuggingFace cache
+.cache/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
