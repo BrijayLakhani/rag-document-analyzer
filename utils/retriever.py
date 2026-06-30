@@ -1,4 +1,4 @@
-"""FAISS-based retrieval for the RAG stage."""
+"""FAISS-based retrieval with cross-encoder re-ranking for the RAG stage."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import CrossEncoder, SentenceTransformer
 
 
 def _sentence_split(text: str) -> list[str]:
@@ -21,11 +21,7 @@ def _sentence_split(text: str) -> list[str]:
 
 
 def chunk_text(text: str, chunk_size: int = 900, overlap_sentences: int = 1) -> list[str]:
-    """Create sentence-aware chunks for retrieval.
-
-    Sentence chunks improve answer quality because retrieved context does not
-    start or end in the middle of words.
-    """
+    """Create sentence-aware chunks for retrieval."""
 
     sentences = _sentence_split(text)
     if not sentences:
@@ -67,10 +63,15 @@ def chunk_text(text: str, chunk_size: int = 900, overlap_sentences: int = 1) -> 
 
 
 class FaissRetriever:
-    """Create, store, and query a FAISS vector index."""
+    """Create, store, and query a FAISS vector index with cross-encoder re-ranking."""
 
-    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> None:
-        self.embedding_model = SentenceTransformer(model_name)
+    def __init__(
+        self,
+        bi_encoder: str = "sentence-transformers/all-MiniLM-L6-v2",
+        cross_encoder: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    ) -> None:
+        self.embedding_model = SentenceTransformer(bi_encoder)
+        self.reranker = CrossEncoder(cross_encoder)
         self.index: faiss.IndexFlatIP | None = None
         self.chunks: list[str] = []
 
@@ -89,26 +90,50 @@ class FaissRetriever:
         self.index.add(embeddings)
 
     def retrieve(self, question: str, top_k: int = 3) -> list[dict[str, object]]:
-        """Retrieve top-k chunks for a user question."""
+        """Retrieve top-k chunks with FAISS then re-rank using the cross-encoder."""
 
         if self.index is None:
             raise ValueError("FAISS index has not been created yet.")
 
+        candidate_k = min(top_k * 3, len(self.chunks))
         query = self.embedding_model.encode([question], convert_to_numpy=True, show_progress_bar=False)
         query = query.astype("float32")
         faiss.normalize_L2(query)
 
-        scores, indices = self.index.search(query, min(top_k, len(self.chunks)))
-        results: list[dict[str, object]] = []
-        for rank, (idx, score) in enumerate(zip(indices[0], scores[0]), start=1):
+        scores, indices = self.index.search(query, candidate_k)
+
+        candidates: list[dict[str, object]] = []
+        for idx, bi_score in zip(indices[0], scores[0]):
             if idx < 0:
                 continue
+            candidates.append(
+                {
+                    "chunk_id": int(idx),
+                    "bi_score": float(bi_score),
+                    "text": self.chunks[int(idx)],
+                }
+            )
+
+        if not candidates:
+            return []
+
+        pairs = [[question, c["text"]] for c in candidates]
+        cross_scores = self.reranker.predict(pairs)
+
+        for candidate, cs in zip(candidates, cross_scores):
+            candidate["score"] = float(cs)
+
+        candidates.sort(key=lambda c: c["score"], reverse=True)
+        top = candidates[:top_k]
+
+        results: list[dict[str, object]] = []
+        for rank, c in enumerate(top, start=1):
             results.append(
                 {
                     "rank": rank,
-                    "chunk_id": int(idx),
-                    "score": float(score),
-                    "text": self.chunks[int(idx)],
+                    "chunk_id": c["chunk_id"],
+                    "score": c["score"],
+                    "text": c["text"],
                 }
             )
         return results

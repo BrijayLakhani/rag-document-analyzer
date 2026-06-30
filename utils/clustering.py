@@ -1,4 +1,4 @@
-"""Document chunk clustering with KMeans."""
+"""Document chunk clustering with KMeans and PCA visualization."""
 
 from __future__ import annotations
 
@@ -7,14 +7,20 @@ from pathlib import Path
 
 import pandas as pd
 from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 
-def cluster_documents(chunks: list[str], requested_clusters: int = 3) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Cluster text chunks and return labels plus distribution."""
+def cluster_documents(
+    chunks: list[str], requested_clusters: int = 3
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Cluster text chunks and return labels, distribution, and PCA coordinates."""
 
     if not chunks:
-        return pd.DataFrame(columns=["chunk_id", "cluster", "text"]), pd.DataFrame(columns=["cluster", "count"])
+        return (
+            pd.DataFrame(columns=["chunk_id", "cluster", "text", "x", "y"]),
+            pd.DataFrame(columns=["cluster", "count"]),
+        )
 
     cluster_count = max(1, min(requested_clusters, len(chunks)))
     vectorizer = TfidfVectorizer(max_features=1000, stop_words="english")
@@ -26,11 +32,23 @@ def cluster_documents(chunks: list[str], requested_clusters: int = 3) -> tuple[p
         model = KMeans(n_clusters=cluster_count, random_state=42, n_init=10)
         labels = model.fit_predict(matrix).tolist()
 
+    n_components = min(2, matrix.shape[1], matrix.shape[0])
+    if n_components >= 2:
+        pca = PCA(n_components=2)
+        coords = pca.fit_transform(matrix.toarray())
+        x_coords = coords[:, 0].tolist()
+        y_coords = coords[:, 1].tolist()
+    else:
+        x_coords = [0.0] * len(chunks)
+        y_coords = [0.0] * len(chunks)
+
     cluster_rows = pd.DataFrame(
         {
             "chunk_id": list(range(1, len(chunks) + 1)),
             "cluster": labels,
             "text": chunks,
+            "x": x_coords,
+            "y": y_coords,
         }
     )
 

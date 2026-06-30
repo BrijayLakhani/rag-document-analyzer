@@ -10,17 +10,25 @@ import pandas as pd
 from spacy.language import Language
 
 
-TARGET_ENTITY_LABELS = {"PERSON", "ORG", "GPE", "DATE", "MONEY", "PRODUCT"}
+DEFAULT_ENTITY_LABELS = {
+    "PERSON", "ORG", "GPE", "DATE", "MONEY", "PRODUCT",
+    "EVENT", "LAW", "NORP", "WORK_OF_ART", "QUANTITY", "LOC",
+}
 
 
-def extract_entities(text: str, nlp: Language) -> list[dict[str, str | int]]:
-    """Extract selected named entity types from text."""
+def extract_entities(
+    text: str,
+    nlp: Language,
+    selected_labels: set[str] | None = None,
+) -> list[dict[str, str | int]]:
+    """Extract named entities filtered by label set."""
 
+    labels = selected_labels or DEFAULT_ENTITY_LABELS
     doc = nlp(text)
     entities: list[dict[str, str | int]] = []
 
     for ent in doc.ents:
-        if ent.label_ in TARGET_ENTITY_LABELS:
+        if ent.label_ in labels:
             entities.append(
                 {
                     "text": ent.text,

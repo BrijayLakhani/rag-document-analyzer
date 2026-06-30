@@ -11,7 +11,7 @@ from transformers import pipeline
 class RAGQuestionAnswerer:
     """Generate answers from retrieved source chunks."""
 
-    def __init__(self, model_name: str = "google/flan-t5-small") -> None:
+    def __init__(self, model_name: str = "google/flan-t5-base") -> None:
         self.generator = pipeline("text2text-generation", model=model_name)
 
     @staticmethod
@@ -69,7 +69,7 @@ class RAGQuestionAnswerer:
         prompt = self.build_prompt(question, retrieved_chunks, summary)
         response = self.generator(
             prompt,
-            max_new_tokens=220,
+            max_new_tokens=256,
             do_sample=False,
             truncation=True,
         )
